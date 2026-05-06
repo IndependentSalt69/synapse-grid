@@ -1,0 +1,77 @@
+{
+  "tamper_meters": [
+    {
+      "meter_id": "METER_T001",
+      "start_day": 60,
+      "end_day": 90,
+      "drop_pct": 0.88
+    },
+    {
+      "meter_id": "METER_T002",
+      "start_day": 63,
+      "end_day": 90,
+      "drop_pct": 0.85
+    },
+    {
+      "meter_id": "METER_T003",
+      "start_day": 65,
+      "end_day": 90,
+      "drop_pct": 0.9
+    },
+    {
+      "meter_id": "METER_T004",
+      "start_day": 67,
+      "end_day": 90,
+      "drop_pct": 0.87
+    },
+    {
+      "meter_id": "METER_T005",
+      "start_day": 70,
+      "end_day": 90,
+      "drop_pct": 0.86
+    }
+  ],
+  "stress_events": [
+    {
+      "feeder_id": "F001",
+      "start_day": 75,
+      "end_day": 77,
+      "hours": [
+        14,
+        20
+      ],
+      "spike_factor": 1.5
+    },
+    {
+      "feeder_id": "F002",
+      "start_day": 82,
+      "end_day": 84,
+      "hours": [
+        11,
+        17
+      ],
+      "spike_factor": 1.4
+    }
+  ],
+  "vacation_meters": [
+    {
+      "meter_id": "METER_V001",
+      "start_day": 45,
+      "end_day": 55
+    },
+    {
+      "meter_id": "METER_V002",
+      "start_day": 48,
+      "end_day": 58
+    }
+  ],
+  "short_gap_meters": [
+    "METER_G001",
+    "METER_G002",
+    "METER_G003"
+  ],
+  "extended_gap_meters": [
+    "METER_G004",
+    "METER_G005"
+  ]
+}
