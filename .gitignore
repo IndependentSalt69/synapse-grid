@@ -1,0 +1,10 @@
+data/raw/
+data/processed/
+models/load_forecast/*.joblib
+models/truth_engine/*.joblib
+__pycache__/
+*.pyc
+.env
+node_modules/
+frontend/dist/
+*.db
