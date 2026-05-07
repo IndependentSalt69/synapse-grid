@@ -85,7 +85,7 @@ React Dashboard (frontend/src/)
 ```mermaid
 graph LR
     %% ── Layer 1: Input ──────────────────────────────────────────
-    subgraph Input["📂 Input (data/raw/)"]
+    subgraph Input["Input (data/raw/)"]
         direction TB
         CSV1[sample_readings.csv]
         CSV2[sample_registry.csv]
@@ -93,7 +93,7 @@ graph LR
     end
 
     %% ── Layer 2: Pipeline ───────────────────────────────────────
-    subgraph Pipeline["⚙️ run_pipeline.py"]
+    subgraph Pipeline["run_pipeline.py"]
         direction TB
         P1[Ingest]
         P2[Validate]
@@ -109,22 +109,22 @@ graph LR
     end
 
     %% ── Layer 3: Storage ────────────────────────────────────────
-    subgraph DB["🗄️ SQLite (data/)"]
+    subgraph DB["SQLite (data/)"]
         direction TB
         DB1[(synapse_grid.db)]
         DB2[(data_quality_log.db)]
     end
 
     %% ── Layer 4: API ────────────────────────────────────────────
-    subgraph API["🔌 FastAPI :8000"]
+    subgraph API["FastAPI :8000"]
         direction TB
-        R1[/alerts]
-        R2[/meters]
-        R3[/feeders]
+        R1["alerts router"]
+        R2["meters router"]
+        R3["feeders router"]
     end
 
     %% ── Layer 5: Frontend ───────────────────────────────────────
-    subgraph Frontend["🖥️ React + Vite :5173"]
+    subgraph Frontend["React + Vite :5173"]
         direction TB
         F1[FeederStressMap]
         F2[AlertQueue]
