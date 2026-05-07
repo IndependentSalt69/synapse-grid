@@ -83,62 +83,63 @@ React Dashboard (frontend/src/)
 ### 1.2 Component Diagram (Mermaid)
 
 ```mermaid
-graph TD
-    subgraph Input
+graph LR
+    %% ── Layer 1: Input ──────────────────────────────────────────
+    subgraph Input["📂 Input (data/raw/)"]
+        direction TB
         CSV1[sample_readings.csv]
         CSV2[sample_registry.csv]
         JSON1[injected_events.json]
     end
 
-    subgraph Pipeline["run_pipeline.py (manual trigger)"]
+    %% ── Layer 2: Pipeline ───────────────────────────────────────
+    subgraph Pipeline["⚙️ run_pipeline.py"]
         direction TB
-        P1[Ingest: meter_reader + registry]
-        P2[Validate: validator → data_quality_log.db]
-        P3[Impute: gap_handler]
-        P4[Peer Graph: builder → peer_graph.json]
-        P5[Features: baseline + deviations + lags + fingerprints + zones]
-        P6[Cluster: seasonal KMeans k=8]
-        P7[Build Feature Matrix → feature_matrix.parquet]
-        P8[Train: XGBoost per cluster + LightGBM Truth Engine]
-        P9[Score: inference_runner + shap_explainer]
-        P10[Evaluate: eval_report.json]
+        P1[Ingest]
+        P2[Validate]
+        P3[Impute Gaps]
+        P4[Peer Graph]
+        P5[Features]
+        P6[Cluster k=8]
+        P7[Feature Matrix]
+        P8[Train Models]
+        P9[Score + SHAP]
+        P10[Evaluate]
         P1 --> P2 --> P3 --> P4 --> P5 --> P6 --> P7 --> P8 --> P9 --> P10
     end
 
-    subgraph Databases["SQLite (data/)"]
-        DB1[(synapse_grid.db\nalert_events\nshadow_events\ndispatch_audit_log\nmeter_readings\nmeter_registry_cache\nfeeder_status)]
+    %% ── Layer 3: Storage ────────────────────────────────────────
+    subgraph DB["🗄️ SQLite (data/)"]
+        direction TB
+        DB1[(synapse_grid.db)]
         DB2[(data_quality_log.db)]
     end
 
-    subgraph API["FastAPI (uvicorn api.main:app --reload)"]
-        R1[routers/alerts.py]
-        R2[routers/meters.py]
-        R3[routers/feeders.py]
+    %% ── Layer 4: API ────────────────────────────────────────────
+    subgraph API["🔌 FastAPI :8000"]
+        direction TB
+        R1[/alerts]
+        R2[/meters]
+        R3[/feeders]
     end
 
-    subgraph Frontend["React 18 + Vite (npm run dev → :5173)"]
-        F1[FeederStressMap\nreact-leaflet]
-        F2[AlertQueue\nTanStack Query]
-        F3[AlertDetail\nRecharts LineChart]
-        F4[DispatchPanel\nZustand store]
+    %% ── Layer 5: Frontend ───────────────────────────────────────
+    subgraph Frontend["🖥️ React + Vite :5173"]
+        direction TB
+        F1[FeederStressMap]
+        F2[AlertQueue]
+        F3[AlertDetail + SHAP]
+        F4[DispatchPanel]
         F5[ConfirmationModal]
     end
 
-    CSV1 --> P1
-    CSV2 --> P1
-    JSON1 --> P1
-    P9 --> DB1
-    P2 --> DB2
-    DB1 --> R1
-    DB1 --> R2
-    DB1 --> R3
-    R1 --> F2
-    R1 --> F3
-    R1 --> F4
-    R2 --> F3
-    R3 --> F1
-    F4 --> F5
-    F5 -->|PATCH /action| R1
+    %% ── Data flow ───────────────────────────────────────────────
+    Input  --> Pipeline
+    P9     --> DB1
+    P2     --> DB2
+    DB1    --> API
+    API    --> Frontend
+    F4     -->|PATCH /action| R1
 ```
 
 ### 1.3 Three Entry Points
