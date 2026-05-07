@@ -10,13 +10,13 @@ Meter endpoints:
 from __future__ import annotations
 
 import json
-from datetime import datetime, timezone, timedelta
+from datetime import datetime, timedelta
 from typing import List, Literal, Optional
 
 import pandas as pd
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
-from sqlalchemy import select, and_
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from api.database import get_db
@@ -51,36 +51,98 @@ class PeerStatus(BaseModel):
     status: Literal["normal", "elevated", "anomalous"]
 
 
+class MeterInfo(BaseModel):
+    meter_id: str
+    feeder_id: Optional[str] = None
+    zone: Optional[str] = None
+    consumer_category: Optional[str] = None
+    sanctioned_kva: Optional[float] = None
+    lat: Optional[float] = None
+    lng: Optional[float] = None
+
+
 # ---------------------------------------------------------------------------
 # Routes
 # ---------------------------------------------------------------------------
+
+@router.get("/meters", response_model=List[MeterInfo])
+async def list_meters(
+    db: AsyncSession = Depends(get_db),
+) -> List[MeterInfo]:
+    """Return all meter IDs from the registry cache, sorted alphabetically."""
+    result = await db.execute(
+        select(MeterRegistryCache).order_by(MeterRegistryCache.meter_id)
+    )
+    rows = result.scalars().all()
+
+    if not rows:
+        raise HTTPException(
+            status_code=503,
+            detail="Meter registry not populated. Run 'python run_pipeline.py' first.",
+        )
+
+    return [
+        MeterInfo(
+            meter_id=r.meter_id,
+            feeder_id=r.feeder_id,
+            zone=r.zone,
+            consumer_category=r.consumer_category,
+            sanctioned_kva=r.sanctioned_kva,
+            lat=r.lat,
+            lng=r.lng,
+        )
+        for r in rows
+    ]
 
 @router.get("/meters/{meter_id}/readings", response_model=List[ReadingPoint])
 async def get_meter_readings(
     meter_id: str,
     db: AsyncSession = Depends(get_db),
 ) -> List[ReadingPoint]:
-    """Return last 14 days of 15-minute readings for the specified meter."""
-    cutoff = (datetime.now(timezone.utc) - timedelta(days=14)).isoformat()
+    """
+    Return last 14 days of 15-minute readings for the specified meter.
+
+    Uses the most recent 14 days of data available for the meter rather than
+    a wall-clock cutoff, so the endpoint works correctly with historical
+    synthetic datasets whose timestamps are not near the current date.
+    """
+    import logging
+    logger = logging.getLogger("synapse_grid.meters")
+
+    # 14 days × 96 slots/day = 1,344 readings
+    SLOTS_14_DAYS = 14 * 96
+
+    # First check total row count for this meter (debug)
+    count_stmt = select(MeterReading).where(MeterReading.meter_id == meter_id)
+    count_result = await db.execute(count_stmt)
+    all_rows = count_result.scalars().all()
+    total_count = len(all_rows)
+    logger.info(f"[readings] meter_id={meter_id!r} total_rows={total_count}")
+    print(f"[DEBUG /readings] meter_id={meter_id!r}  total_rows_in_db={total_count}")
+
+    if total_count == 0:
+        raise HTTPException(
+            status_code=404,
+            detail=f"No readings found for meter '{meter_id}'. "
+                   "Run the pipeline first to populate meter_readings.",
+        )
+
+    # Return the most recent 1,344 slots (≈14 days), ascending for charting
     stmt = (
         select(MeterReading)
-        .where(
-            and_(
-                MeterReading.meter_id == meter_id,
-                MeterReading.timestamp >= cutoff,
-            )
-        )
-        .order_by(MeterReading.timestamp.asc())
+        .where(MeterReading.meter_id == meter_id)
+        .order_by(MeterReading.timestamp.desc())
+        .limit(SLOTS_14_DAYS)
     )
     result = await db.execute(stmt)
     rows = result.scalars().all()
 
-    if not rows:
-        raise HTTPException(
-            status_code=404,
-            detail=f"No readings found for meter '{meter_id}' in the last 14 days. "
-                   "Run the pipeline first to populate meter_readings.",
-        )
+    # Reverse so the chart gets ascending time order
+    rows = list(reversed(rows))
+
+    print(f"[DEBUG /readings] returning {len(rows)} rows  "
+          f"first={rows[0].timestamp if rows else 'N/A'}  "
+          f"last={rows[-1].timestamp if rows else 'N/A'}")
 
     return [
         ReadingPoint(

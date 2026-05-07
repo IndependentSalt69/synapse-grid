@@ -310,6 +310,83 @@ def stage_evaluate(data_dir: str, force: bool) -> dict:
     return {"skipped": False}
 
 
+def stage_demo_state_setup(data_dir: str, force: bool) -> dict:
+    """
+    Promote alerts to a realistic spread of states for demo purposes.
+
+    After inference all tamper alerts land in WATCHING (repeat-pattern gate
+    not yet met on a single run). This stage manually sets:
+      - METER_T001, METER_T002 → NEW   (high-confidence, ready to dispatch)
+      - METER_T003, METER_T004 → WATCHING  (leave as-is, monitoring)
+      - METER_T005             → DISPATCHED (already actioned, shows resolved state)
+
+    Only runs when --demo flag is passed. Idempotent: safe to re-run.
+    """
+    import sqlite3
+    from datetime import datetime, timezone
+
+    db_path = "data/synapse_grid.db"
+    if not Path(db_path).exists():
+        print("  [Demo] No database found — skipping demo state setup.")
+        return {"skipped": True}
+
+    conn = sqlite3.connect(db_path)
+
+    # Promote METER_T001 and METER_T002 to NEW
+    for meter_id in ["METER_T001", "METER_T002"]:
+        conn.execute(
+            "UPDATE alert_events SET state='NEW' WHERE meter_id=? AND state='WATCHING'",
+            (meter_id,),
+        )
+        promoted = conn.execute(
+            "SELECT COUNT(*) FROM alert_events WHERE meter_id=? AND state='NEW'",
+            (meter_id,),
+        ).fetchone()[0]
+        print(f"  [Demo] {meter_id} → NEW  ({promoted} alert(s))")
+
+    # Leave METER_T003 and METER_T004 as WATCHING (no change needed)
+    for meter_id in ["METER_T003", "METER_T004"]:
+        count = conn.execute(
+            "SELECT COUNT(*) FROM alert_events WHERE meter_id=? AND state='WATCHING'",
+            (meter_id,),
+        ).fetchone()[0]
+        print(f"  [Demo] {meter_id} → WATCHING  ({count} alert(s), unchanged)")
+
+    # Set METER_T005 to DISPATCHED with a synthetic resolution
+    now_iso = datetime.now(timezone.utc).isoformat()
+    conn.execute(
+        """UPDATE alert_events
+           SET state='DISPATCHED',
+               dispatch_action='DISPATCH_LINEMAN',
+               resolved_at=?,
+               resolver_id='demo-dispatcher'
+           WHERE meter_id=? AND state IN ('WATCHING', 'NEW')""",
+        (now_iso, "METER_T005"),
+    )
+    dispatched = conn.execute(
+        "SELECT COUNT(*) FROM alert_events WHERE meter_id='METER_T005' AND state='DISPATCHED'"
+    ).fetchone()[0]
+    print(f"  [Demo] METER_T005 → DISPATCHED  ({dispatched} alert(s))")
+
+    # Also write a dispatch_audit_log entry for METER_T005
+    alert_id_row = conn.execute(
+        "SELECT alert_id FROM alert_events WHERE meter_id='METER_T005' AND state='DISPATCHED' LIMIT 1"
+    ).fetchone()
+    if alert_id_row:
+        conn.execute(
+            """INSERT OR IGNORE INTO dispatch_audit_log
+               (alert_id, action, reason_code, resolver_id, resolved_at)
+               VALUES (?, 'DISPATCH_LINEMAN', NULL, 'demo-dispatcher', ?)""",
+            (alert_id_row[0], now_iso),
+        )
+
+    conn.commit()
+    conn.close()
+
+    print(f"  [Demo] Alert state spread: 2×NEW, 2×WATCHING, 1×DISPATCHED")
+    return {"skipped": False}
+
+
 # ---------------------------------------------------------------------------
 # Pipeline state (shared between stages)
 # ---------------------------------------------------------------------------
@@ -352,6 +429,14 @@ def parse_args() -> argparse.Namespace:
         action="store_true",
         help="Force re-run all stages, ignoring cached outputs",
     )
+    parser.add_argument(
+        "--demo",
+        action="store_true",
+        help=(
+            "After inference, promote alerts to a realistic demo spread: "
+            "METER_T001/T002 → NEW, METER_T003/T004 → WATCHING, METER_T005 → DISPATCHED"
+        ),
+    )
     return parser.parse_args()
 
 
@@ -360,7 +445,7 @@ def main() -> None:
 
     print(f"\n{'=' * 60}")
     print(f"  Synapse-Grid Pipeline  —  {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
-    print(f"  Data dir: {args.data_dir}  |  Force: {args.force}")
+    print(f"  Data dir: {args.data_dir}  |  Force: {args.force}  |  Demo: {args.demo}")
     print(f"{'=' * 60}\n")
 
     for stage_name, stage_fn in STAGES:
@@ -378,6 +463,15 @@ def main() -> None:
             print("\nPipeline aborted. Fix the error above and re-run.", file=sys.stderr)
             sys.exit(1)
 
+    # Optional demo state setup — runs after all stages complete
+    if args.demo:
+        print(f"[Demo State Setup] Starting...")
+        try:
+            stage_demo_state_setup(data_dir=args.data_dir, force=args.force)
+            print(f"[Demo State Setup] Done.")
+        except Exception as e:
+            print(f"[Demo State Setup] WARNING: {e}", file=sys.stderr)
+
     # Final summary
     summary = _state.get("inference_summary", {})
     print(f"\n{'=' * 60}")
@@ -386,6 +480,8 @@ def main() -> None:
     print(f"  Alerts written (NEW):      {summary.get('alerts_new', 0)}")
     print(f"  Alerts written (WATCHING): {summary.get('alerts_watching', 0)}")
     print(f"  Shadow queue records:      {summary.get('shadow_records', 0)}")
+    if args.demo:
+        print(f"  Demo state:                2×NEW, 2×WATCHING, 1×DISPATCHED")
     print(f"  Eval report:               models/eval/eval_report.json")
     print(f"{'=' * 60}\n")
 

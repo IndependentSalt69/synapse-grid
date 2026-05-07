@@ -149,6 +149,19 @@ export const fetchMeterBaseline = (meterId: string): Promise<BaselinePoint[]> =>
 export const fetchMeterPeers = (meterId: string): Promise<PeerStatus[]> =>
   apiFetch<PeerStatus[]>(`/meters/${meterId}/peers`);
 
+export interface MeterInfo {
+  meter_id: string;
+  feeder_id: string | null;
+  zone: string | null;
+  consumer_category: string | null;
+  sanctioned_kva: number | null;
+  lat: number | null;
+  lng: number | null;
+}
+
+export const fetchAllMeters = (): Promise<MeterInfo[]> =>
+  apiFetch<MeterInfo[]>(`/meters`);
+
 // ---------------------------------------------------------------------------
 // Feeder endpoints
 // ---------------------------------------------------------------------------

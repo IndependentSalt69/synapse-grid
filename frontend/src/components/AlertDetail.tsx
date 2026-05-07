@@ -7,16 +7,40 @@ import {
   CartesianGrid,
   Tooltip,
   Legend,
-  ReferenceArea,
+  ReferenceLine,
   ResponsiveContainer,
 } from "recharts";
 import { MapContainer, TileLayer, CircleMarker, Popup } from "react-leaflet";
-import { format, parseISO, subDays } from "date-fns";
 import type { AlertDetail as AlertDetailType } from "../lib/api";
 import { useMeterReadings, useMeterBaseline, useMeterPeers } from "../hooks/useMeterReadings";
 
 interface Props {
   alert: AlertDetailType;
+}
+
+// ---------------------------------------------------------------------------
+// Helpers
+// ---------------------------------------------------------------------------
+
+/** Normalise any timestamp string to a JS Date safely. */
+function parseTs(ts: string): Date {
+  // DB stores "2024-01-01 00:00:00+00:00" — replace space with T for ISO 8601
+  return new Date(ts.replace(" ", "T"));
+}
+
+function formatTick(ts: string): string {
+  const d = parseTs(ts);
+  if (isNaN(d.getTime())) return "";
+  return d.toLocaleDateString("en-IN", { month: "short", day: "numeric" });
+}
+
+function formatTooltipLabel(ts: string): string {
+  const d = parseTs(ts);
+  if (isNaN(d.getTime())) return ts;
+  return d.toLocaleString("en-IN", {
+    month: "short", day: "numeric",
+    hour: "2-digit", minute: "2-digit",
+  });
 }
 
 // ---------------------------------------------------------------------------
@@ -27,20 +51,33 @@ function buildChartData(
   readings: Array<{ timestamp: string; kwh: number | null }>,
   baseline: Array<{ hour_of_day: number; day_of_week: number; baseline_kwh: number }>
 ) {
+  // Build baseline lookup keyed by "hour_dayOfWeek"
   const baselineLookup: Record<string, number> = {};
   for (const b of baseline) {
     baselineLookup[`${b.hour_of_day}_${b.day_of_week}`] = b.baseline_kwh;
   }
 
-  return readings.map((r) => {
-    const ts = parseISO(r.timestamp);
-    const key = `${ts.getHours()}_${ts.getDay()}`;
+  const data = readings.map((r) => {
+    const d = parseTs(r.timestamp);
+    const hour = d.getHours();
+    const dow = d.getDay(); // 0=Sun … 6=Sat
+    const key = `${hour}_${dow}`;
     return {
       timestamp: r.timestamp,
       actual: r.kwh,
       baseline: baselineLookup[key] ?? null,
     };
   });
+
+  console.log("[AlertDetail] chartData sample (first 3):", data.slice(0, 3));
+  console.log("[AlertDetail] chartData length:", data.length);
+  console.log("[AlertDetail] baseline entries:", baseline.length);
+  console.log(
+    "[AlertDetail] rows with baseline value:",
+    data.filter((d) => d.baseline !== null).length
+  );
+
+  return data;
 }
 
 // ---------------------------------------------------------------------------
@@ -143,12 +180,8 @@ export default function AlertDetail({ alert }: Props) {
 
   const chartData = buildChartData(readings ?? [], baseline ?? []);
 
-  // Anomaly range: triggered_at ± 24h
-  const anomalyStart = format(
-    subDays(parseISO(alert.triggered_at), 1),
-    "yyyy-MM-dd'T'HH:mm:ssxxx"
-  );
-  const anomalyEnd = alert.triggered_at;
+  // Find the index of the triggered_at timestamp in chartData for the ReferenceLine
+  const triggeredTs = alert.triggered_at;
 
   // Find a representative lat/lng for the alerted meter from peers
   const peerCenter: [number, number] = [12.9716, 77.5946];
@@ -191,22 +224,22 @@ export default function AlertDetail({ alert }: Props) {
               <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
               <XAxis
                 dataKey="timestamp"
-                tickFormatter={(ts) => format(parseISO(ts), "MMM d")}
+                tickFormatter={formatTick}
                 interval={95}
                 tick={{ fontSize: 10 }}
               />
               <YAxis unit=" kWh" tick={{ fontSize: 10 }} width={55} />
               <Tooltip
-                labelFormatter={(ts) => format(parseISO(ts as string), "MMM d, HH:mm")}
+                labelFormatter={(ts) => formatTooltipLabel(ts as string)}
                 formatter={(val: number) => [`${val?.toFixed(3)} kWh`]}
               />
               <Legend wrapperStyle={{ fontSize: "0.75rem" }} />
-              <ReferenceArea
-                x1={anomalyStart}
-                x2={anomalyEnd}
-                fill="#fef08a"
-                fillOpacity={0.3}
-                label={{ value: "Anomaly", fontSize: 10, fill: "#ca8a04" }}
+              {/* Mark the anomaly trigger time with a vertical line */}
+              <ReferenceLine
+                x={triggeredTs}
+                stroke="#ca8a04"
+                strokeDasharray="4 2"
+                label={{ value: "Alert", fontSize: 9, fill: "#ca8a04", position: "top" }}
               />
               <Line
                 type="monotone"
@@ -227,6 +260,13 @@ export default function AlertDetail({ alert }: Props) {
               />
             </ComposedChart>
           </ResponsiveContainer>
+        </div>
+      )}
+
+      {/* Debug: show message if no chart data */}
+      {chartData.length === 0 && readings !== undefined && (
+        <div style={{ padding: "12px", background: "#fef9c3", borderRadius: 6, marginBottom: 12, fontSize: "0.8rem", color: "#92400e" }}>
+          No readings data available for this meter yet.
         </div>
       )}
 

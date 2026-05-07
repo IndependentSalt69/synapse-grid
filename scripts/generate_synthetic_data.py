@@ -117,11 +117,19 @@ def generate_registry(rng: np.random.Generator) -> pd.DataFrame:
                 "connection_date": date(2018 + rng.integers(0, 5), rng.integers(1, 13), rng.integers(1, 28)),
             })
     
-    # Override specific meter IDs for injected patterns
-    special_ids = TAMPER_METERS + VACATION_METERS + SHORT_GAP_METERS + EXTENDED_GAP_METERS
-    for i, special_id in enumerate(special_ids):
-        if i < len(rows):
-            rows[i]["meter_id"] = special_id
+    # Override specific meter IDs for injected patterns.
+    # Tamper meters are spread one per feeder (indices 0, 10, 20, 30, 40 = first
+    # meter of each geographic cluster) so each feeder has one anomalous meter.
+    # Vacation, gap meters take the next available slots in cluster 0.
+    tamper_placement = [0, 10, 20, 30, 40]   # one per feeder F001–F005
+    other_special = VACATION_METERS + SHORT_GAP_METERS + EXTENDED_GAP_METERS
+    other_placement = [1, 2, 3, 4, 5, 6, 7]  # remaining slots in cluster 0
+
+    for slot, special_id in zip(tamper_placement, TAMPER_METERS):
+        rows[slot]["meter_id"] = special_id
+
+    for slot, special_id in zip(other_placement, other_special):
+        rows[slot]["meter_id"] = special_id
     
     return pd.DataFrame(rows)
 

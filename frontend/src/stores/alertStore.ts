@@ -22,6 +22,9 @@ interface AlertStore {
   selectedAlertId: string | null;
   feederFilter: string | null;
 
+  // Meter Explorer selection (set by map click or dropdown)
+  explorerMeterId: string | null;
+
   // Dispatch workflow state
   pendingAction: ActionType | null;
   pendingReasonCode: ReasonCode | null;
@@ -31,6 +34,7 @@ interface AlertStore {
   selectAlert: (id: string) => void;
   clearSelection: () => void;
   setFeederFilter: (feederId: string | null) => void;
+  setExplorerMeter: (meterId: string | null) => void;
   setPendingAction: (action: ActionType | null) => void;
   setPendingReasonCode: (code: ReasonCode | null) => void;
   openConfirmModal: () => void;
@@ -42,6 +46,7 @@ export const useAlertStore = create<AlertStore>((set) => ({
   // Initial state
   selectedAlertId: null,
   feederFilter: null,
+  explorerMeterId: null,
   pendingAction: null,
   pendingReasonCode: null,
   showConfirmModal: false,
@@ -67,6 +72,10 @@ export const useAlertStore = create<AlertStore>((set) => ({
   // Set feeder filter from map click
   setFeederFilter: (feederId: string | null) =>
     set({ feederFilter: feederId }),
+
+  // Set meter explorer selection (from map click or dropdown)
+  setExplorerMeter: (meterId: string | null) =>
+    set({ explorerMeterId: meterId }),
 
   // Set pending action — clears reason code when action changes
   setPendingAction: (action: ActionType | null) =>
