@@ -9,3 +9,5 @@ node_modules/
 frontend/dist/
 *.db
 data/synapse_grid.db
+node_modules
+dist
